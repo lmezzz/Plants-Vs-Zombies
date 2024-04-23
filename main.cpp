@@ -48,12 +48,6 @@ public:
         gridY = y;
         isAvailable = false;
 
-        Vector2u Frame = texture.getSize(); 
-        int framWidth = (Frame.x)/6;
-        IntRect shooter_plant(0 ,0 , framWidth , Frame.y*1.05);
-        sprite.setTexture(texture);
-        sprite.setTextureRect(shooter_plant);
-
         float scaleFactorX = static_cast<float>(blokWidth) / texture.getSize().x;
         float scaleFactorY = static_cast<float>(blokHeight) / texture.getSize().y;
         if (scaleFactorX < scaleFactorY) {
