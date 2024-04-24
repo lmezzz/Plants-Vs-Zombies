@@ -1,111 +1,230 @@
 #include <SFML/Graphics.hpp>
-#include<iostream>
+#include <iostream>
+#include <vector>
+
 using namespace std;
 using namespace sf;
 
-const int ROWS = 8;
-const int COLS = 8; 
+const int winWidth = 1280;
+const int winHeight = 720;
+const int ROWS = 10;
+const int COLUMNS = 10;
+const int blockWidth = winWidth / ROWS;
+const int blockHeight = winHeight / COLUMNS;
+const int zomRow = 3;
 
- Vector2f Fitter(Vector2f ToBeFitIn , Vector2u ToBeFit){
-        Vector2f tmmp;
-        tmmp.x = ToBeFitIn.x / ToBeFit.x;
-        tmmp.y = ToBeFitIn.y / ToBeFit.y;
-        return tmmp;
+class Character {
+protected:
+    Sprite sprite;
+    Texture texture;
+
+public:
+    Character(const Texture& texture) : sprite() {
+        this->texture = texture;
+        sprite.setTexture(texture);
+        float scaleFactorX = static_cast<float>(blockWidth) / texture.getSize().x;
+        float scaleFactorY = static_cast<float>(blockHeight) / texture.getSize().y;
+        sprite.setScale(scaleFactorX, scaleFactorY);
     }
 
-class Plant{
+    virtual void draw(RenderWindow& window) const {
+        window.draw(sprite);
+    }
 
-    Sprite plant;
-    int health;
-    Texture PlantTexture;
+    FloatRect getBounds() const {
+        return sprite.getGlobalBounds();
+    }
+};
 
-    public:
+struct Grid {
+    bool isOccupied = true;
+    RectangleShape cell;
+    Character* character = nullptr;
+};
 
-    Plant(int h){
-        health = h;
-        if (!PlantTexture.loadFromFile("Images\\Attack_1.png"))
-        {
-            cout<<"error while loading plant"<<endl;
+class Bullet : public Character {
+public:
+    Bullet(const Texture& texture, const Vector2f& position) : Character(texture) {
+        sprite.setPosition(position);
+    }
+    void update(float deltaTime) {
+        sprite.move(500 * deltaTime, 0); // Adjust the speed here
+    }
+};
+
+class Plant : public Character {
+protected:
+    Grid cell;
+    vector<Bullet> bullets;
+    Texture bulletTexture;
+
+public:
+    Plant(const Texture& texture, const Texture& bulletTexture) : Character(texture), bulletTexture(bulletTexture), cell() {}
+
+    void setPosition(int x, int y) {
+        sprite.setPosition(x * blockWidth, y * blockHeight);
+        cell.isOccupied = false;
+        cell.character = this;
+    }
+
+    void draw(RenderWindow& window) const override {
+        window.draw(sprite);
+        for (size_t i = 0; i < bullets.size(); i++) {
+            bullets[i].draw(window);
         }
     }
 
-    Vector2u GetTextureSize(){
-        return PlantTexture.getSize();
+    void shoot(const Vector2f& targetPosition) {
+        Bullet bullet(bulletTexture, Vector2f(sprite.getPosition().x + sprite.getGlobalBounds().width / 2, sprite.getPosition().y));
+        bullets.push_back(bullet);
     }
 
-    void PlantAnimation(Vector2f pos , Vector2f Size){
-        Vector2u Frame = GetTextureSize(); 
-        int framWidth = (Frame.x)/6;
-        Vector2f plantScale =  Fitter(Size , Frame);
-        IntRect shooter_plant(0 ,0 , framWidth , Frame.y*1.05);
-        plant.setTexture(PlantTexture);
-        plant.setTextureRect(shooter_plant);
-        plant.setPosition(pos);
-        plant.setScale(plantScale.x*5.5 , plantScale.y*0.7 );
+    void updateBullets(float deltaTime) {
+        for (size_t i = 0; i < bullets.size(); i++) {
+            bullets[i].update(deltaTime);
+        }
     }
-    Sprite GetSprite() const{
-        return plant;
+
+    void drawBullets(RenderWindow& window) const {
+        for (size_t i = 0; i < bullets.size(); i++) {
+            bullets[i].draw(window);
+        }
     }
-   
 };
 
-struct Cells{
-    bool isOcuppied;
-    RectangleShape Cell;
+class Zombie : public Character {
+protected:
+    int health;
+    float speed;
+
+public:
+    Zombie(const Texture& texture, int health, float speed) : Character(texture), health(health), speed(speed) {
+        sprite.setPosition(blockWidth * 9, blockHeight * zomRow);
+    }
+
+    void update(float deltaTime) {
+        float movement = speed * deltaTime;
+        sprite.move(-movement, 0); // Move towards the left
+    }
+
+    void takeDamage(int damage) {
+        health -= damage;
+    }
+
+    bool isDead() const {
+        return health <= 0;
+    }
 };
 
-int main()
-{
-    RenderWindow window(VideoMode(1280, 720) , "Plants Vs Zombies Lite");
+int main() {
+    RenderWindow window(VideoMode(winWidth, winHeight), "Plants vs Zombies");
+    Color brown(139, 69, 19);           // Brown
+    Color darkGreen(0, 100, 0);         // Dark Green
+    Color red(255, 0, 0);               // Red
+    Color lightGreen(144, 238, 144);    // Light Green
+    Color leafGreen(0, 128, 0);         // Leaf Green
 
-    RectangleShape Cell_sprite;
-    
-    Vector2u WindowSize = window.getSize();
+    Texture plantTexture;
+    if (!plantTexture.loadFromFile("plant.png")) {
+        return 1;
+    }
 
-    Cells All_Cells[ROWS][COLS];
+    Texture zombieTexture;
+    if (!zombieTexture.loadFromFile("zombie.png")) {
+        return 1;
+    }
 
+    Texture bulletTexture;
+    if (!bulletTexture.loadFromFile("shooter.png")) {
+        return 1;
+    }
+
+    vector<Plant> AllPlants;//changed 
     Vector2f CellSize;
-    CellSize.x = (WindowSize.x)/ROWS;
-    CellSize.y = (WindowSize.y)/COLS;
-    Cell_sprite.setSize(CellSize); 
+    CellSize.x = blockWidth;
+    CellSize.y = blockHeight;
+    Grid Cells[10][10];
+    RectangleShape SampleCell;
+    SampleCell.setSize(CellSize);
 
-    for (int i = 0; i < ROWS; i++)
-    {
-        for (int j = 0; j < ROWS; j++)
-        {
-            All_Cells[i][j].Cell = Cell_sprite;
-            All_Cells[i][j].Cell.setPosition(i*(CellSize.x) , j*(CellSize.y));
-            if ((i + j) % 2 == 0)
-            {
-                All_Cells[i][j].Cell.setFillColor(Color::White);
-            }else{
-                All_Cells[i][j].Cell.setFillColor(Color::Yellow);
+    Zombie zombie(zombieTexture, 5, 80.0f); // Increased zombie speed
+
+    vector<Bullet> bullets;
+
+    Clock clock;
+
+    while (window.isOpen()) {
+        float timeTaken = clock.restart().asSeconds();
+        Event event;
+        window.clear();
+        for (int y = 0; y < ROWS; y++) {
+            for (int x = 0; x < COLUMNS; x++) {
+                Cells[y][x].cell = SampleCell;
+                Cells[y][x].cell.setPosition(x * blockWidth, y * blockHeight);
+                if (x == 0) {
+                    Cells[y][x].cell.setFillColor(brown);
+                }
+                else if (x == COLUMNS - 1) {
+                    Cells[y][x].cell.setFillColor(red);
+                }
+                else if (y == 0 || y == ROWS - 1) {
+                    Cells[y][x].cell.setFillColor(darkGreen);
+                }
+                else {
+                    if ((x + y) % 2 == 0) {
+                        Cells[y][x].cell.setFillColor(lightGreen);
+                    }
+                    else {
+                        Cells[y][x].cell.setFillColor(leafGreen);
+                    }
+                }
+                window.draw(Cells[y][x].cell);
             }
         }
-    }
-    
-    while (window.isOpen())
-    {
-        Event event;
-        while (window.pollEvent(event))
-        {
-            if (event.type == Event::Closed)
-            {
+        while (window.pollEvent(event)) {
+            if (event.type == Event::Closed) {
                 window.close();
             }
-            
-        }
-       window.clear( );
-        for (int i = 0; i < ROWS; ++i) {
-            for (int j = 0; j < COLS; ++j) {
-                window.draw(All_Cells[i][j].Cell);
+            else if (event.type == Event::MouseButtonPressed && event.mouseButton.button == Mouse::Left) {
+                int x = event.mouseButton.x / blockWidth;
+                int y = event.mouseButton.y / blockHeight;
+                if (x >= 0 && x < ROWS && y >= 0 && y < COLUMNS) {
+                    Plant TempPlant(plantTexture, bulletTexture);
+                    TempPlant.setPosition(x, y);
+                    AllPlants.push_back(TempPlant);
+                    //cout << y << x << endl;
+                    bullets.push_back(Bullet(bulletTexture, Cells[y][x].cell.getPosition()));
+                }
             }
         }
-        Vector2f cell_pos =  All_Cells[2][3].Cell.getPosition();
-        Plant My_plant(100);
-        Vector2f CellSize = All_Cells[2][3].Cell.getSize();
-        My_plant.PlantAnimation(cell_pos , CellSize);
-        window.draw(My_plant.GetSprite());
+        for (const auto& plant : AllPlants) {
+            plant.draw(window);
+        }
+
+        for (size_t i = 0; i < bullets.size(); i++) {
+            bullets[i].update(timeTaken);
+            bullets[i].draw(window);
+        }
+
+        zombie.update(timeTaken);
+        zombie.draw(window);
+
+        //hit-dishkiyaon
+        for (auto it = bullets.begin(); it != bullets.end();) {
+            if (zombie.getBounds().intersects(it->getBounds())) {
+                it = bullets.erase(it);
+                zombie.takeDamage(1);
+                if (zombie.isDead()) {
+                    // grid[0][0].increaseScore(50);
+                    zombie = Zombie(zombieTexture, 5, 80.0f); // Respawn with increased speed
+                }
+            }
+            else {
+                ++it;
+            }
+        }
         window.display();
-    }   
+    }
+
+    return 0;
 }
