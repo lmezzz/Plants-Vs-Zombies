@@ -3,8 +3,8 @@
 #include <iostream>
 #include <vector>
 #include <random>
-#include<ctime>
-#include<chrono>
+#include <ctime>
+#include <chrono>
 
 using namespace std;
 using namespace sf;
@@ -69,19 +69,22 @@ public:
 class Plant : public Character
 {
 protected:
+    static vector<Plant> AllPlants;
     vector<Bullet> bullets;
     Texture bulletTexture;
+    int health;
 
 public:
     Plant(const Texture &texture, const Texture &bulletTexture) : Character(texture), bulletTexture(bulletTexture) {}
 
-    void setPosition(int x, int y , Grid& cell)
+    void setPosition(int x, int y, Grid (&cell)[10][10])
     {
         sprite.setPosition(x * blockWidth, y * blockHeight);
-        cell.isOccupied = true;
-        cell.plant = this;
+        cell[x][y].isOccupied = true;
+        cell[x][y].plant = this;
+        cout<<"placed";
+        health = 6;
     }
-
     void draw(RenderWindow &window) const override
     {
         window.draw(sprite);
@@ -112,18 +115,59 @@ public:
             bullets[i].draw(window);
         }
     }
+    void TakeDamage()
+    {
+        health--;
+    }
+    bool isdead()
+    {
+        if (health <= 0)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+    static void PlacePlant(Plant plant , int x , int y ,Grid (&Cell)[10][10]) {
+        AllPlants.push_back(plant);
+        AllPlants.back().setPosition(x, y, Cell);
+    }
+    static bool isEmpty(){
+        return AllPlants.empty();
+    }
+    static void DrawAllPlants(RenderWindow &window){
+        for (const auto &plant : Plant::AllPlants)
+        {
+            plant.draw(window);
+        }
+    }
+    static void RemovePlant(Plant removablePlant){
+        for (auto it = AllPlants.begin(); it != AllPlants.end(); ++it)
+        {
+            if (it->sprite.getPosition() == removablePlant.sprite.getPosition() )
+            {
+                AllPlants.erase(it);
+                cout<<"erased";
+                break;
+            }
+            
+        }   
+    }
 };
 
 class Zombie : public Character
 {
 protected:
+    static vector<Zombie> AllZombies;
     int health;
     float speed;
 
 public:
-    Zombie(const Texture &texture, int health, float speed ,int row) : Character(texture), health(health), speed(speed)
+    Zombie(const Texture &texture, int health, float speed) : Character(texture), health(health), speed(speed)
     {
-        sprite.setPosition(blockWidth * 9, blockHeight * row);
+        
     }
 
     void update(float deltaTime)
@@ -141,7 +185,94 @@ public:
     {
         return health <= 0;
     }
+    void PlantDetector(Grid (&Cells)[10][10])
+    {
+        int x = sprite.getPosition().x / blockWidth;
+        int y = sprite.getPosition().y / blockHeight;
+        if (Cells[x][y].isOccupied)
+        {
+            if (Cells[x][y].plant->getBounds().contains(sprite.getPosition()))
+            {
+                speed = 0;
+                Cells[x][y].plant->TakeDamage();
+                if (Cells[x][y].plant->isdead())
+                {
+                    Cells[x][y].isOccupied = false;
+                    Plant::RemovePlant(*(Cells[x][y].plant));
+                    Cells[x][y].plant = nullptr;
+                    cout<<"Nice";
+                    speed = 30;
+                }
+            }
+        }
+    }
+
+    static void PlaceZombie(Zombie zombie) 
+    {
+        mt19937 gen(chrono::high_resolution_clock::now().time_since_epoch().count());
+        uniform_int_distribution<int> distrib(1, 8);
+        int pos = distrib(gen); // Generate a new random number between 1 and 8
+        zombie.sprite.setPosition(blockWidth * 9, blockHeight * pos);
+        AllZombies.push_back(zombie);
+    }
+
+    static void UpdateDrawCheck( float timeTaken ,RenderWindow& window , Grid (&Cells)[10][10]){
+        for (Zombie &zombie : AllZombies)
+        {
+            zombie.update(timeTaken);
+            zombie.draw(window);
+            zombie.PlantDetector(Cells);
+        }
+    }
+
+    static bool IsEmpty() {
+        return AllZombies.empty();
+    }
+
+    static int GetSize(){
+        return AllZombies.size();
+    }
+
 };
+
+void MakeGrid(Grid &Cells, int x, int y, RectangleShape SampleCell, RenderWindow &window)
+{
+    Color brown(139, 69, 19);        // Brown
+    Color darkGreen(0, 100, 0);      // Dark Green
+    Color red(255, 0, 0);            // Red
+    Color lightGreen(144, 238, 144); // Light Green
+    Color leafGreen(0, 128, 0);      // Leaf Green
+
+    Cells.cell = SampleCell;
+    Cells.cell.setPosition(x * blockWidth, y * blockHeight);
+    if (x == 0)
+    {
+        Cells.cell.setFillColor(brown);
+    }
+    else if (x == COLUMNS - 1)
+    {
+        Cells.cell.setFillColor(red);
+    }
+    else if (y == 0 || y == ROWS - 1)
+    {
+        Cells.cell.setFillColor(darkGreen);
+    }
+    else
+    {
+        if ((x + y) % 2 == 0)
+        {
+            Cells.cell.setFillColor(lightGreen);
+        }
+        else
+        {
+            Cells.cell.setFillColor(leafGreen);
+        }
+    }
+    window.draw(Cells.cell);
+}
+
+vector<Plant> Plant::AllPlants;
+vector<Zombie> Zombie::AllZombies;
 
 int main()
 {
@@ -170,7 +301,7 @@ int main()
         return 1;
     }
 
-    vector<Plant> AllPlants; // changed
+    // vector<Plant> AllPlants; // changed
     vector<Plant> tempPlants;
 
     Vector2f CellSize;
@@ -181,7 +312,7 @@ int main()
     RectangleShape SampleCell;
     SampleCell.setSize(CellSize);
 
-    vector<Zombie> AllZombies;
+    // vector<Zombie> AllZombies;
 
     vector<Bullet> bullets;
 
@@ -199,32 +330,7 @@ int main()
         {
             for (int x = 0; x < COLUMNS; x++)
             {
-                Cells[y][x].cell = SampleCell;
-                Cells[y][x].cell.setPosition(x * blockWidth, y * blockHeight);
-                if (x == 0)
-                {
-                    Cells[y][x].cell.setFillColor(brown);
-                }
-                else if (x == COLUMNS - 1)
-                {
-                    Cells[y][x].cell.setFillColor(red);
-                }
-                else if (y == 0 || y == ROWS - 1)
-                {
-                    Cells[y][x].cell.setFillColor(darkGreen);
-                }
-                else
-                {
-                    if ((x + y) % 2 == 0)
-                    {
-                        Cells[y][x].cell.setFillColor(lightGreen);
-                    }
-                    else
-                    {
-                        Cells[y][x].cell.setFillColor(leafGreen);
-                    }
-                }
-                window.draw(Cells[y][x].cell);
+                MakeGrid(Cells[x][y], x, y, SampleCell, window);
             }
         }
         while (window.pollEvent(event))
@@ -260,53 +366,36 @@ int main()
                 {
                     if (!tempPlants.empty())
                     {
-                        AllPlants.push_back(tempPlants.back());
-                        AllPlants.back().setPosition(x , y ,Cells[x][y]);
+                        Plant::PlacePlant(tempPlants.back() , x , y ,Cells);
                         tempPlants.clear();
                     }
                 }
             }
         }
 
-        if (!AllPlants.empty())
+        if (!Plant::isEmpty())
         {
-            for (const auto &plant : AllPlants)
-            {
-                plant.draw(window);
-            }
+            Plant::DrawAllPlants(window);
         }
-        // cout<<elapsed.asSeconds();
-        // cout<<Interval.asSeconds();
-        // cout<<timeTaken;
-        
-        if (AllZombies.size() < 20 && elapsed >= Interval)
+
+        if (Zombie::GetSize() < 20 && elapsed >= Interval)
         {
-            mt19937 gen(chrono::high_resolution_clock::now().time_since_epoch().count());
-
-
-            uniform_int_distribution<int> distrib(1, 8);
-            int pos = distrib(gen); // Generate a new random number between 1 and 8
-
-            Zombie tempZombie(zombieTexture , 5 , 30.0 , pos);
-            AllZombies.push_back(tempZombie);
+            Zombie tempZombie(zombieTexture, 5, 30.0);
+            
+            Zombie::PlaceZombie(tempZombie);
             elapsed = Time::Zero;
         }
-        
 
         for (size_t i = 0; i < bullets.size(); i++)
         {
             bullets[i].update(timeTaken);
             bullets[i].draw(window);
         }
-        for (Zombie &zombie : AllZombies )
-        {
-            zombie.update(timeTaken);
-            zombie.draw(window);
-        }
-        
 
-        // zombie.update(timeTaken);
-        // zombie.draw(window);
+        if (!Zombie::IsEmpty())
+        {
+            Zombie::UpdateDrawCheck(timeTaken , window , Cells);
+        }
 
         // hit-dishkiyaon
         // for (auto it = bullets.begin(); it != bullets.end();)
