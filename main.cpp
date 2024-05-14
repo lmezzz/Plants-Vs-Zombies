@@ -3,8 +3,8 @@
 #include <iostream>
 #include <vector>
 #include <random>
-#include<ctime>
-#include<chrono>
+#include <ctime>
+#include <chrono>
 
 using namespace std;
 using namespace sf;
@@ -24,7 +24,8 @@ protected:
     Texture texture;
 
 public:
-    Character(const Texture &texture) : sprite()
+    Character(){}
+    Character(const Texture& texture) : sprite()
     {
         this->texture = texture;
         sprite.setTexture(texture);
@@ -33,7 +34,7 @@ public:
         sprite.setScale(scaleFactorX * 0.6, scaleFactorY * 0.6);
     }
 
-    virtual void draw(RenderWindow &window) const
+    virtual void draw(RenderWindow& window) const
     {
         window.draw(sprite);
     }
@@ -45,44 +46,51 @@ public:
 };
 
 class Plant;
+vector<Plant> AllPlants;
+// freeze , sunflower
 
 struct Grid
 {
     bool isOccupied = false;
     RectangleShape cell;
-    Plant *plant = nullptr;
+    Plant* plant = nullptr;
 };
 
 class Bullet : public Character
 {
 public:
-    Bullet(const Texture &texture, const Vector2f &position) : Character(texture)
+    Bullet(){}
+    Bullet(const Texture& texture, const Vector2f& position) : Character(texture)
     {
         sprite.setPosition(position);
     }
     void update(float deltaTime)
     {
-        sprite.move(50 * deltaTime, 0); // Adjust the speed here
+        sprite.move(80 * deltaTime, 0); // Adjust the speed here
     }
 };
 
 class Plant : public Character
 {
 protected:
+   // static vector<Plant> AllPlants;
     vector<Bullet> bullets;
     Texture bulletTexture;
+    int health;
 
 public:
-    Plant(const Texture &texture, const Texture &bulletTexture) : Character(texture), bulletTexture(bulletTexture) {}
+    Plant (){}
+    Plant(const Texture& texture, const Texture& bulletTexture) : Character(texture), bulletTexture(bulletTexture), health(6) {}
 
-    void setPosition(int x, int y , Grid& cell)
+    void setPosition(int x, int y, Grid& cell)
     {
         sprite.setPosition(x * blockWidth, y * blockHeight);
         cell.isOccupied = true;
         cell.plant = this;
+        //cout << "placed";
+       // health = 6;
     }
-
-    void draw(RenderWindow &window) const override
+    void draw(RenderWindow& window) const override
     {
         window.draw(sprite);
         for (size_t i = 0; i < bullets.size(); i++)
@@ -91,7 +99,7 @@ public:
         }
     }
 
-    void shoot(const Vector2f &targetPosition)
+    void shoot(const Vector2f& targetPosition)
     {
         Bullet bullet(bulletTexture, Vector2f(sprite.getPosition().x + sprite.getGlobalBounds().width / 2, sprite.getPosition().y));
         bullets.push_back(bullet);
@@ -105,27 +113,68 @@ public:
         }
     }
 
-    void drawBullets(RenderWindow &window) const
+    void drawBullets(RenderWindow& window) const
     {
         for (size_t i = 0; i < bullets.size(); i++)
         {
             bullets[i].draw(window);
         }
     }
+    void TakeDamage()
+    {
+        health--;
+    }
+    bool isdead()const
+    {
+        if (health <= 0)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+    void PlacePlant(Plant plant, int x, int y, Grid& Cell) {
+        AllPlants.push_back(plant);
+        AllPlants.back().setPosition(x, y, Cell);
+    }
+    bool isEmpty() {
+        return AllPlants.empty();
+    }
+    void DrawAllPlants(RenderWindow& window) {
+        for (const auto& plant : AllPlants)
+        {
+            plant.draw(window);
+        }
+    }
+    void RemovePlant(Plant removablePlant) {
+        for (auto it = AllPlants.begin(); it != AllPlants.end(); ++it)
+        {
+            if (it->sprite.getPosition() == removablePlant.sprite.getPosition())
+            {
+                AllPlants.erase(it);
+                cout << "erased";
+                break;
+            }
+        }
+    }
 };
-
+class Zombie;
+vector<Zombie> AllZombies;
 class Zombie : public Character
 {
 protected:
+   // vector<Zombie> AllZombies;
     int health;
     float speed;
-
+    Plant p;
 public:
-    Zombie(const Texture &texture, int health, float speed ,int row) : Character(texture), health(health), speed(speed)
+    Zombie(){}
+    Zombie(const Texture& texture, int health, float speed) :Character(texture), health(health), speed(speed)
     {
-        sprite.setPosition(blockWidth * 9, blockHeight * row);
-    }
 
+    }
     void update(float deltaTime)
     {
         float movement = speed * deltaTime;
@@ -141,17 +190,128 @@ public:
     {
         return health <= 0;
     }
+    void PlantDetector(Grid(&Cells)[10][10])
+    {
+        int x = sprite.getPosition().x / blockWidth;
+        int y = sprite.getPosition().y / blockHeight;
+        if (Cells[x][y].isOccupied && Cells[x][y].plant->getBounds().contains(sprite.getPosition()))
+        {
+            cout << "dayumm";
+            speed = 0;
+            Cells[x][y].plant->TakeDamage();
+            if (Cells[x][y].plant->isdead())
+            {
+                Cells[x][y].isOccupied = false;
+                p.RemovePlant(*(Cells[x][y].plant));
+                Cells[x][y].plant = nullptr;
+                cout << "Nice";
+                speed = 30;
+            }
+        }
+        // if (Cells[x][y].isOccupied)
+        // {
+        //     cout<<"lol";
+        //     if (Cells[x][y].plant->getBounds().contains(sprite.getPosition()))
+        //     {
+        //         cout<<"dayumm";
+        //         speed = 0;
+        //         Cells[x][y].plant->TakeDamage();
+        //         if (Cells[x][y].plant->isdead())
+        //         {
+        //             Cells[x][y].isOccupied = false;
+        //             Plant::RemovePlant(*(Cells[x][y].plant));
+        //             Cells[x][y].plant = nullptr;
+        //             cout<<"Nice";
+        //             speed = 30;
+        //         }
+        //     }
+        // }
+    }
+
+    void PlaceZombie(Zombie zombie)
+    {
+        mt19937 gen(chrono::high_resolution_clock::now().time_since_epoch().count());
+        uniform_int_distribution<int> distrib(1, 8);
+        int pos = distrib(gen); // Generate a new random number between 1 and 8
+        zombie.sprite.setPosition(blockWidth * 9, blockHeight * pos);
+        AllZombies.push_back(zombie);
+    }
+
+    void UpdateDrawCheck(float timeTaken, RenderWindow& window, Grid(&Cells)[10][10]) {
+        for (Zombie& zombie : AllZombies)
+        {
+            zombie.update(timeTaken);
+            zombie.draw(window);
+            zombie.PlantDetector(Cells);
+        }
+    }
+
+    bool IsEmpty() {
+        return AllZombies.empty();
+    }
+
+    int GetSize() {
+        return AllZombies.size();
+    }
+
 };
 
-int main()
+void MakeGrid(Grid& Cells, int x, int y, RectangleShape SampleCell, RenderWindow& window)
 {
-    RenderWindow window(VideoMode(winWidth, winHeight), "Plants vs Zombies");
     Color brown(139, 69, 19);        // Brown
     Color darkGreen(0, 100, 0);      // Dark Green
     Color red(255, 0, 0);            // Red
     Color lightGreen(144, 238, 144); // Light Green
     Color leafGreen(0, 128, 0);      // Leaf Green
 
+    Cells.cell = SampleCell;
+    Cells.cell.setPosition(x * blockWidth, y * blockHeight);
+    if (x == 0)
+    {
+        Cells.cell.setFillColor(brown);
+    }
+    else if (x == COLUMNS - 1)
+    {
+        Cells.cell.setFillColor(red);
+    }
+    else if (y == 0 || y == ROWS - 1)
+    {
+        Cells.cell.setFillColor(darkGreen);
+    }
+    else
+    {
+        if ((x + y) % 2 == 0)
+        {
+            Cells.cell.setFillColor(lightGreen);
+        }
+        else
+        {
+            Cells.cell.setFillColor(leafGreen);
+        }
+    }
+    window.draw(Cells.cell);
+}
+
+//vector<Plant> AllPlants;
+//vector<Zombie> AllZombies;
+
+int main()
+{
+    // const int desiredFPS = 60;
+    // const sf::Time timePerFrame = sf::seconds(1.0f / desiredFPS);
+    Clock clock;
+    Clock Zclock;
+    Time elapsed = Time::Zero;
+    Time Interval = seconds(1000.0f);
+
+    RenderWindow window(VideoMode(winWidth, winHeight), "Plants vs Zombies");
+    Color brown(139, 69, 19);        // Brown
+    Color darkGreen(0, 100, 0);      // Dark Green
+    Color red(255, 0, 0);            // Red
+    Color lightGreen(144, 238, 144); // Light Green
+    Color leafGreen(0, 128, 0);      // Leaf Green
+    //idhar objects banaingy jo call krain gy but wo vectors ka kaam hai
+    Plant pobj;
     Texture plantTexture;
     if (!plantTexture.loadFromFile("Images\\plant.png"))
     {
@@ -170,7 +330,7 @@ int main()
         return 1;
     }
 
-    vector<Plant> AllPlants; // changed
+    // vector<Plant> AllPlants; // changed
     vector<Plant> tempPlants;
 
     Vector2f CellSize;
@@ -181,50 +341,23 @@ int main()
     RectangleShape SampleCell;
     SampleCell.setSize(CellSize);
 
-    vector<Zombie> AllZombies;
+    // vector<Zombie> AllZombies;
 
     vector<Bullet> bullets;
 
-    Clock clock;
-    Time elapsed = Time::Zero;
-    Time Interval = seconds(0.0009);
+    float timeTaken = 0;
 
     while (window.isOpen())
     {
-        float timeTaken = clock.restart().asSeconds();
-        elapsed += clock.restart();
+        timeTaken = clock.restart().asSeconds();
+        elapsed += Zclock.getElapsedTime();
         Event event;
         window.clear();
         for (int y = 0; y < ROWS; y++)
         {
             for (int x = 0; x < COLUMNS; x++)
             {
-                Cells[y][x].cell = SampleCell;
-                Cells[y][x].cell.setPosition(x * blockWidth, y * blockHeight);
-                if (x == 0)
-                {
-                    Cells[y][x].cell.setFillColor(brown);
-                }
-                else if (x == COLUMNS - 1)
-                {
-                    Cells[y][x].cell.setFillColor(red);
-                }
-                else if (y == 0 || y == ROWS - 1)
-                {
-                    Cells[y][x].cell.setFillColor(darkGreen);
-                }
-                else
-                {
-                    if ((x + y) % 2 == 0)
-                    {
-                        Cells[y][x].cell.setFillColor(lightGreen);
-                    }
-                    else
-                    {
-                        Cells[y][x].cell.setFillColor(leafGreen);
-                    }
-                }
-                window.draw(Cells[y][x].cell);
+                MakeGrid(Cells[x][y], x, y, SampleCell, window);
             }
         }
         while (window.pollEvent(event))
@@ -260,53 +393,39 @@ int main()
                 {
                     if (!tempPlants.empty())
                     {
-                        AllPlants.push_back(tempPlants.back());
-                        AllPlants.back().setPosition(x , y ,Cells[x][y]);
+                        pobj.PlacePlant(tempPlants.back(), x, y, Cells[x][y]);
                         tempPlants.clear();
                     }
                 }
             }
         }
+        // same masla
+        Zombie zobj;
 
-        if (!AllPlants.empty())
+        if (!pobj.isEmpty())
         {
-            for (const auto &plant : AllPlants)
-            {
-                plant.draw(window);
-            }
+            pobj.DrawAllPlants(window);
         }
-        // cout<<elapsed.asSeconds();
-        // cout<<Interval.asSeconds();
-        // cout<<timeTaken;
-        
-        if (AllZombies.size() < 20 && elapsed >= Interval)
+
+        if (zobj.GetSize() < 20 && elapsed >= Interval)
         {
-            mt19937 gen(chrono::high_resolution_clock::now().time_since_epoch().count());
+            Zombie tempZombie(zombieTexture, 5, 30.0);//yeh bhi bna hua hai isska kiya kron?
 
-
-            uniform_int_distribution<int> distrib(1, 8);
-            int pos = distrib(gen); // Generate a new random number between 1 and 8
-
-            Zombie tempZombie(zombieTexture , 5 , 30.0 , pos);
-            AllZombies.push_back(tempZombie);
+            zobj.PlaceZombie(tempZombie);
             elapsed = Time::Zero;
+            Zclock.restart().asSeconds();
         }
-        
 
         for (size_t i = 0; i < bullets.size(); i++)
         {
             bullets[i].update(timeTaken);
             bullets[i].draw(window);
         }
-        for (Zombie &zombie : AllZombies )
-        {
-            zombie.update(timeTaken);
-            zombie.draw(window);
-        }
-        
 
-        // zombie.update(timeTaken);
-        // zombie.draw(window);
+        if (!zobj.IsEmpty())
+        {
+            zobj.UpdateDrawCheck(timeTaken, window, Cells);
+        }
 
         // hit-dishkiyaon
         // for (auto it = bullets.begin(); it != bullets.end();)
